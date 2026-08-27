@@ -2,9 +2,9 @@ name: OLX Monitor Job
 
 on:
   schedule:
-    # Executa a cada 5 minutos
-    - cron: '*/5 * * * *'
-  workflow_dispatch: # Permite rodar manualmente pelo painel do GitHub
+    # Roda nos minutos 3, 13, 23, 33, 43, 53 de cada hora (evita a fila dos múltiplos de 5)
+    - cron: '3,13,23,33,43,53 * * * *'
+  workflow_dispatch:
 
 jobs:
   scrape:
