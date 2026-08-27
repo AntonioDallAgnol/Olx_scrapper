@@ -195,24 +195,8 @@ def checar_anuncios(historico):
         print(f"[Erro Scraping] {e}")
 
 def main():
-    # Inicia o servidor HTTP em segundo plano para o Render não matar a aplicação
-    threading.Thread(target=start_http_server, daemon=True).start()
-
     historico = carregar_historico()
-    print("Iniciando monitoramento OLX...")
-    
-    try:
-        requests.post(
-            f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage",
-            json={"chat_id": CHAT_ID, "text": "🤖 <b>Bot de Monitoramento OLX iniciado!</b>", "parse_mode": "HTML"},
-            timeout=10
-        )
-    except Exception:
-        pass
-    
-    while True:
-        checar_anuncios(historico)
-        time.sleep(CHECK_INTERVAL_SECONDS)
+    checar_anuncios(historico)
 
 if __name__ == "__main__":
     main()
