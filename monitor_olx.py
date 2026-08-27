@@ -2,19 +2,33 @@ import time
 import re
 import json
 import os
+import threading
+from http.server import HTTPServer, BaseHTTPRequestHandler
 import requests
 from curl_cffi import requests as cffi_requests
 from bs4 import BeautifulSoup
 
 # ================= CONFIGURAÇÕES =================
-TELEGRAM_TOKEN = "8659592937:AAEji1h1XuriKcyEWrVP10RlVyy0bLCcqVs"
-CHAT_ID = "7186926895"
+TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN", "8659592937:AAEji1h1XuriKcyEWrVP10RlVyy0bLCcqVs")
+CHAT_ID = os.getenv("CHAT_ID", "7186926895")
 
 URL_BUSCA = "https://www.olx.com.br/games/consoles-de-video-game/sony/playstation-5?ps=2000"
 PRECO_LIMITE = 3001.00
 CHECK_INTERVAL_SECONDS = 30
 DB_FILE = "anuncios_vistos.json"
 # =================================================
+
+class HealthCheckHandler(BaseHTTPRequestHandler):
+    def do_GET(self):
+        self.send_response(200)
+        self.send_header("Content-type", "text/plain")
+        self.end_headers()
+        self.wfile.write(b"Bot OLX Online!")
+
+def start_http_server():
+    port = int(os.environ.get("PORT", 8080))
+    server = HTTPServer(("0.0.0.0", port), HealthCheckHandler)
+    server.serve_forever()
 
 def carregar_historico():
     if os.path.exists(DB_FILE):
@@ -31,7 +45,6 @@ def salvar_historico(historico):
 
 def enviar_telegram(titulo, preco, link):
     url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
-    
     preco_formatado = f"R$ {preco:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
     mensagem_html = (
         f"🚨 <b>Oportunidade Encontrada!</b>\n\n"
@@ -68,7 +81,6 @@ def extrair_preco(texto):
 
 def buscar_anuncios_html(soup):
     anuncios = []
-    # Busca todos os links que apontam para um anúncio da OLX (possuem ID numérico no final)
     links = soup.find_all("a", href=re.compile(r"olx\.com\.br/.*-\d+"))
     
     for link_tag in links:
@@ -78,18 +90,14 @@ def buscar_anuncios_html(soup):
             continue
         ad_id = match_id.group(1)
 
-        # Container do card (o link ou o elemento pai mais próximo)
         card = link_tag.find_parent("section") or link_tag.find_parent("li") or link_tag
 
-        # Título
         titulo_tag = card.find(["h2", "h3"]) or link_tag.find(["h2", "h3"])
         titulo = titulo_tag.get_text(strip=True) if titulo_tag else None
         
         if not titulo:
-            # Fallback para o atributo title ou aria-label do link
             titulo = link_tag.get("title") or link_tag.get("aria-label") or "Anúncio OLX"
 
-        # Preço
         preco_tag = card.find(string=re.compile(r"R\$\s*[\d\.,]+"))
         preco_num = extrair_preco(preco_tag) if preco_tag else None
 
@@ -100,7 +108,6 @@ def buscar_anuncios_html(soup):
             "link": href
         })
     
-    # Remove duplicados da lista preservando a ordem
     vistos = set()
     unicos = []
     for item in anuncios:
@@ -134,7 +141,7 @@ def checar_anuncios(historico):
         anuncios = buscar_anuncios_html(soup)
 
         if not anuncios:
-            print("[Aviso] Nenhum anúncio identificado na página. A URL pode estar com bloqueio de região ou sem resultados.")
+            print("[Aviso] Nenhum anúncio identificado na página.")
             return
 
         novos_anuncios = 0
@@ -167,10 +174,12 @@ def checar_anuncios(historico):
         print(f"[Erro Scraping] {e}")
 
 def main():
+    # Inicia o servidor HTTP em segundo plano para o Render não matar a aplicação
+    threading.Thread(target=start_http_server, daemon=True).start()
+
     historico = carregar_historico()
     print("Iniciando monitoramento OLX...")
     
-    # Envio inicial de confirmação
     try:
         requests.post(
             f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage",
