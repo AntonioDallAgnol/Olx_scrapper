@@ -128,29 +128,15 @@ def buscar_anuncios_html(soup):
 
 def checar_anuncios(historico):
     try:
-        headers = {
-            "authority": "www.olx.com.br",
-            "accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8",
-            "accept-language": "pt-BR,pt;q=0.9,en-US;q=0.8,en;q=0.7",
-            "cache-control": "max-age=0",
-            "sec-ch-ua": '"Chromium";v="124", "Google Chrome";v="124", "Not-A.Brand";v="99"',
-            "sec-ch-ua-mobile": "?0",
-            "sec-ch-ua-platform": '"Windows"',
-            "sec-fetch-dest": "document",
-            "sec-fetch-mode": "navigate",
-            "sec-fetch-site": "none",
-            "sec-fetch-user": "?1",
-            "upgrade-insecure-requests": "1",
-            "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
-        }
-
-        session = cffi_requests.Session(impersonate="chrome124")
-
-        resposta = session.get(
-            URL_BUSCA,
-            headers=headers,
-            timeout=25
-        )
+        scraper_key = os.getenv("SCRAPERAPI_KEY")
+        
+        # Se houver chave, usa o proxy anti-bloqueio; caso contrário, faz request direta
+        if scraper_key:
+            url_alvo = f"http://api.scraperapi.com?api_key={scraper_key}&url={requests.utils.quote(URL_BUSCA)}&country_code=br"
+            resposta = requests.get(url_alvo, timeout=60)
+        else:
+            session = cffi_requests.Session(impersonate="chrome124")
+            resposta = session.get(URL_BUSCA, timeout=25)
 
         if resposta.status_code != 200:
             print(f"[Aviso] Status {resposta.status_code} ao acessar OLX.")
@@ -164,10 +150,8 @@ def checar_anuncios(historico):
             return
 
         novos_anuncios = 0
-
         for item in anuncios:
             anuncio_id = item["id"]
-
             if anuncio_id in historico:
                 continue
 
