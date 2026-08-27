@@ -32,9 +32,8 @@ class HealthCheckHandler(BaseHTTPRequestHandler):
         self.end_headers()
 
     def log_message(self, format, *args):
-        # Suprime logs de acesso HTTP no console do Render
         pass
-        
+
 def start_http_server():
     port = int(os.environ.get("PORT", 8080))
     server = HTTPServer(("0.0.0.0", port), HealthCheckHandler)
@@ -69,7 +68,7 @@ def enviar_telegram(titulo, preco, link):
         "parse_mode": "HTML",
         "disable_web_page_preview": False
     }
-    
+
     try:
         r = requests.post(url, json=payload, timeout=10)
         res = r.json()
@@ -92,7 +91,7 @@ def extrair_preco(texto):
 def buscar_anuncios_html(soup):
     anuncios = []
     links = soup.find_all("a", href=re.compile(r"olx\.com\.br/.*-\d+"))
-    
+
     for link_tag in links:
         href = link_tag.get("href")
         match_id = re.search(r"-(\d+)(?:\?|$)", href)
@@ -104,7 +103,7 @@ def buscar_anuncios_html(soup):
 
         titulo_tag = card.find(["h2", "h3"]) or link_tag.find(["h2", "h3"])
         titulo = titulo_tag.get_text(strip=True) if titulo_tag else None
-        
+
         if not titulo:
             titulo = link_tag.get("title") or link_tag.get("aria-label") or "Anúncio OLX"
 
@@ -117,14 +116,14 @@ def buscar_anuncios_html(soup):
             "preco": preco_num,
             "link": href
         })
-    
+
     vistos = set()
     unicos = []
     for item in anuncios:
         if item["id"] not in vistos:
             vistos.add(item["id"])
             unicos.append(item)
-            
+
     return unicos
 
 def checar_anuncios(historico):
@@ -145,15 +144,14 @@ def checar_anuncios(historico):
             "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
         }
 
-        # Cria uma sessão persistente para manter cookies/sessão TLS
         session = cffi_requests.Session(impersonate="chrome124")
-        
+
         resposta = session.get(
             URL_BUSCA,
             headers=headers,
             timeout=25
         )
-        
+
         if resposta.status_code != 200:
             print(f"[Aviso] Status {resposta.status_code} ao acessar OLX.")
             return
@@ -169,13 +167,13 @@ def checar_anuncios(historico):
 
         for item in anuncios:
             anuncio_id = item["id"]
-            
+
             if anuncio_id in historico:
                 continue
 
             historico.add(anuncio_id)
             novos_anuncios += 1
-            
+
             titulo = item["titulo"]
             preco = item["preco"]
             link = item["link"]
@@ -196,6 +194,7 @@ def checar_anuncios(historico):
 
 def main():
     historico = carregar_historico()
+    print("Iniciando varredura única OLX...")
     checar_anuncios(historico)
 
 if __name__ == "__main__":
