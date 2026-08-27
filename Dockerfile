@@ -1,49 +1,40 @@
 # Stage 1: Build the Application
-# We use python:3.10 as the base for building and installing dependencies.
-FROM python:3.10 AS build
+FROM python:3.10-slim AS build
 
-# Set the working directory inside the container
 WORKDIR /usr/src/app
 
-# Install system dependencies if needed
-RUN apt-get update && apt-get install -y --no-install-recommends     build-essential     && rm -rf /var/lib/apt/lists/*
+# Dependências para compilar bibliotecas C (necessário para curl_cffi)
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential \
+    && rm -rf /var/lib/apt/lists/*
 
-# Create a virtual environment
+# Criação do virtual environment
 RUN python -m venv /opt/venv
 ENV PATH="/opt/venv/bin:$PATH"
 
-# Copy requirements.txt if it exists (using wildcard to avoid build failure)
-COPY requirements.tx[t] ./requirements.txt
+# Copia e instala as dependências
+COPY requirements.txt .
+RUN pip install --no-cache-dir --upgrade pip && \
+    pip install --no-cache-dir -r requirements.txt
 
-# Install Python dependencies only if requirements.txt exists
-RUN pip install --upgrade pip &&     if [ -f requirements.txt ]; then         pip install -r requirements.txt;     fi
+# Stage 2: Final Runtime Image
+FROM python:3.10-slim
 
-# Copy the rest of the application source code
-COPY . .
-
-# Stage 2: Create the Final Production Image
-# We use python:3.10 as the runtime image with all the necessary tools.
-FROM python:3.10
-
-# Set the working directory
 WORKDIR /usr/src/app
 
-# Copy the virtual environment from the build stage
+# Copia o virtual environment compilado
 COPY --from=build /opt/venv /opt/venv
 
-# Copy the application code
-COPY --from=build /usr/src/app .
+# Copia o código da aplicação
+COPY . .
 
-# Set the virtual environment as the active Python environment
 ENV PATH="/opt/venv/bin:$PATH"
+# Garante que os prints apareçam imediatamente nos logs do Fly
+ENV PYTHONUNBUFFERED=1
 
-# Create a non-root user to run the application
+# Usuário sem privilégios de root
 RUN useradd -m -u 1000 appuser && chown -R appuser:appuser /usr/src/app
 USER appuser
 
-# Expose the port your app runs on
-ENV PORT=8080
-EXPOSE $PORT
-
-# Define the command to start your application
-CMD ["python", "app.py"]
+# Executa o script do bot
+CMD ["python", "monitor_olx.py"]
