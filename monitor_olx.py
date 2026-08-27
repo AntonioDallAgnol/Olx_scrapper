@@ -19,12 +19,20 @@ DB_FILE = "anuncios_vistos.json"
 # =================================================
 
 class HealthCheckHandler(BaseHTTPRequestHandler):
-    def do_GET(self):
+    def do_HEAD(self):
         self.send_response(200)
-        self.send_header("Content-type", "text/plain")
+        self.send_header("Content-Type", "text/plain; charset=utf-8")
+        self.send_header("Content-Length", "2")
         self.end_headers()
-        self.wfile.write(b"Bot OLX Online!")
 
+    def do_GET(self):
+        corpo = b"OK"
+        self.send_response(200)
+        self.send_header("Content-Type", "text/plain; charset=utf-8")
+        self.send_header("Content-Length", str(len(corpo)))
+        self.end_headers()
+        self.wfile.write(corpo)
+        
 def start_http_server():
     port = int(os.environ.get("PORT", 8080))
     server = HTTPServer(("0.0.0.0", port), HealthCheckHandler)
