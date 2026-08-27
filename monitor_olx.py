@@ -12,7 +12,7 @@ from bs4 import BeautifulSoup
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN", "8659592937:AAEji1h1XuriKcyEWrVP10RlVyy0bLCcqVs")
 CHAT_ID = os.getenv("CHAT_ID", "7186926895")
 
-URL_BUSCA = "https://www.olx.com.br/games/consoles-de-video-game/sony/playstation-5?ps=2000"
+URL_BUSCA = "https://www.olx.com.br/games/consoles-de-video-game/sony/playstation-5?ps=2000&pe=3000&opst=2"
 PRECO_LIMITE = 3001.00
 CHECK_INTERVAL_SECONDS = 60
 DB_FILE = "anuncios_vistos.json"
