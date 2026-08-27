@@ -14,7 +14,7 @@ CHAT_ID = os.getenv("CHAT_ID", "7186926895")
 
 URL_BUSCA = "https://www.olx.com.br/games/consoles-de-video-game/sony/playstation-5?ps=2000"
 PRECO_LIMITE = 3001.00
-CHECK_INTERVAL_SECONDS = 30
+CHECK_INTERVAL_SECONDS = 60
 DB_FILE = "anuncios_vistos.json"
 # =================================================
 
