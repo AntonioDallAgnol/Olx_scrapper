@@ -1,43 +1,18 @@
-import time
-import re
-import json
 import os
-import threading
-from http.server import HTTPServer, BaseHTTPRequestHandler
+import json
+import re
 import requests
 from curl_cffi import requests as cffi_requests
 from bs4 import BeautifulSoup
 
 # ================= CONFIGURAÇÕES =================
-TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN", "8659592937:AAEji1h1XuriKcyEWrVP10RlVyy0bLCcqVs")
-CHAT_ID = os.getenv("CHAT_ID", "7186926895")
+TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN", "")
+CHAT_ID = os.getenv("CHAT_ID", "")
 
 URL_BUSCA = "https://www.olx.com.br/games/consoles-de-video-game/sony/playstation-5?ps=2000&pe=3000&opst=2"
 PRECO_LIMITE = 3001.00
-CHECK_INTERVAL_SECONDS = 60
 DB_FILE = "anuncios_vistos.json"
 # =================================================
-
-class HealthCheckHandler(BaseHTTPRequestHandler):
-    protocol_version = "HTTP/1.1"
-
-    def do_HEAD(self):
-        self.send_response(204)
-        self.send_header("Connection", "close")
-        self.end_headers()
-
-    def do_GET(self):
-        self.send_response(204)
-        self.send_header("Connection", "close")
-        self.end_headers()
-
-    def log_message(self, format, *args):
-        pass
-
-def start_http_server():
-    port = int(os.environ.get("PORT", 8080))
-    server = HTTPServer(("0.0.0.0", port), HealthCheckHandler)
-    server.serve_forever()
 
 def carregar_historico():
     if os.path.exists(DB_FILE):
@@ -53,6 +28,10 @@ def salvar_historico(historico):
         json.dump(list(historico), f, indent=2)
 
 def enviar_telegram(titulo, preco, link):
+    if not TELEGRAM_TOKEN or not CHAT_ID:
+        print(f"[Telegram Mock] Alerta: {titulo} - R$ {preco:.2f}")
+        return
+
     url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
     preco_formatado = f"R$ {preco:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
     mensagem_html = (
@@ -88,24 +67,43 @@ def extrair_preco(texto):
     except ValueError:
         return None
 
-def buscar_anuncios_html(soup):
+def extrair_anuncios(html_text):
+    """Extrai anúncios tentando primeiro pelo payload Next.js e fallback em HTML."""
+    soup = BeautifulSoup(html_text, "html.parser")
     anuncios = []
-    links = soup.find_all("a", href=re.compile(r"olx\.com\.br/.*-\d+"))
 
+    # Abordagem 1: Extrair do JSON do Next.js (__NEXT_DATA__)
+    script_next = soup.find("script", id="__NEXT_DATA__")
+    if script_next and script_next.string:
+        try:
+            dados = json.loads(script_next.string)
+            props = dados.get("props", {}).get("pageProps", {})
+            ad_list = props.get("ads", []) or props.get("listingProps", {}).get("ads", [])
+            for ad in ad_list:
+                preco_raw = ad.get("price") or ad.get("rawPrice")
+                preco_num = float(preco_raw) if preco_raw is not None else None
+                anuncios.append({
+                    "id": str(ad.get("listId") or ad.get("id")),
+                    "titulo": ad.get("subject") or ad.get("title") or "Anúncio OLX",
+                    "preco": preco_num,
+                    "link": ad.get("url") or ad.get("friendlyUrl")
+                })
+            if anuncios:
+                return anuncios
+        except Exception:
+            pass
+
+    # Abordagem 2: Fallback por HTML caso o JSON mude de estrutura
+    links = soup.find_all("a", href=re.compile(r"olx\.com\.br/.*-\d+"))
     for link_tag in links:
         href = link_tag.get("href")
         match_id = re.search(r"-(\d+)(?:\?|$)", href)
         if not match_id:
             continue
         ad_id = match_id.group(1)
-
         card = link_tag.find_parent("section") or link_tag.find_parent("li") or link_tag
-
         titulo_tag = card.find(["h2", "h3"]) or link_tag.find(["h2", "h3"])
-        titulo = titulo_tag.get_text(strip=True) if titulo_tag else None
-
-        if not titulo:
-            titulo = link_tag.get("title") or link_tag.get("aria-label") or "Anúncio OLX"
+        titulo = titulo_tag.get_text(strip=True) if titulo_tag else link_tag.get("title", "Anúncio OLX")
 
         preco_tag = card.find(string=re.compile(r"R\$\s*[\d\.,]+"))
         preco_num = extrair_preco(preco_tag) if preco_tag else None
@@ -127,23 +125,27 @@ def buscar_anuncios_html(soup):
     return unicos
 
 def checar_anuncios(historico):
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
+        "Accept-Language": "pt-BR,pt;q=0.9,en-US;q=0.8",
+        "Sec-Fetch-Dest": "document",
+        "Sec-Fetch-Mode": "navigate",
+        "Sec-Fetch-Site": "none",
+        "Sec-Fetch-User": "?1",
+        "Upgrade-Insecure-Requests": "1"
+    }
+
     try:
-        scraper_key = os.getenv("SCRAPERAPI_KEY")
-        
-        # Se houver chave, usa o proxy anti-bloqueio; caso contrário, faz request direta
-        if scraper_key:
-            url_alvo = f"http://api.scraperapi.com?api_key={scraper_key}&url={requests.utils.quote(URL_BUSCA)}&country_code=br"
-            resposta = requests.get(url_alvo, timeout=60)
-        else:
-            session = cffi_requests.Session(impersonate="chrome124")
-            resposta = session.get(URL_BUSCA, timeout=25)
+        # Usando curl_cffi para imitar o handshake TLS exato do Chrome
+        session = cffi_requests.Session(impersonate="chrome124")
+        resposta = session.get(URL_BUSCA, headers=headers, timeout=25)
 
         if resposta.status_code != 200:
             print(f"[Aviso] Status {resposta.status_code} ao acessar OLX.")
             return
 
-        soup = BeautifulSoup(resposta.text, "html.parser")
-        anuncios = buscar_anuncios_html(soup)
+        anuncios = extrair_anuncios(resposta.text)
 
         if not anuncios:
             print("[Aviso] Nenhum anúncio identificado na página.")
