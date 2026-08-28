@@ -1,8 +1,8 @@
 import os
-import json
 import re
+import json
 import requests
-from curl_cffi import requests as cffi_requests
+from playwright.sync_api import sync_playwright
 from bs4 import BeautifulSoup
 
 # ================= CONFIGURAÇÕES =================
@@ -68,11 +68,10 @@ def extrair_preco(texto):
         return None
 
 def extrair_anuncios(html_text):
-    """Extrai anúncios tentando primeiro pelo payload Next.js e fallback em HTML."""
     soup = BeautifulSoup(html_text, "html.parser")
     anuncios = []
 
-    # Abordagem 1: Extrair do JSON do Next.js (__NEXT_DATA__)
+    # Abordagem 1: Next.js JSON (__NEXT_DATA__)
     script_next = soup.find("script", id="__NEXT_DATA__")
     if script_next and script_next.string:
         try:
@@ -93,7 +92,7 @@ def extrair_anuncios(html_text):
         except Exception:
             pass
 
-    # Abordagem 2: Fallback por HTML caso o JSON mude de estrutura
+    # Abordagem 2: Fallback por elementos do DOM
     links = soup.find_all("a", href=re.compile(r"olx\.com\.br/.*-\d+"))
     for link_tag in links:
         href = link_tag.get("href")
@@ -124,28 +123,40 @@ def extrair_anuncios(html_text):
 
     return unicos
 
+def obter_html_com_playwright(url):
+    with sync_playwright() as p:
+        browser = p.chromium.launch(
+            headless=True,
+            args=[
+                "--disable-blink-features=AutomationControlled",
+                "--no-sandbox",
+                "--disable-setuid-sandbox"
+            ]
+        )
+        context = browser.new_context(
+            user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+            locale="pt-BR",
+            viewport={"width": 1920, "height": 1080}
+        )
+        page = context.new_page()
+        
+        # Oculta propriedades de automação
+        page.add_init_script("""
+            Object.defineProperty(navigator, 'webdriver', {
+                get: () => undefined
+            });
+        """)
+
+        page.goto(url, wait_until="domcontentloaded", timeout=45000)
+        page.wait_for_timeout(3000)  # aguarda scripts anti-bot resolverem
+        content = page.content()
+        browser.close()
+        return content
+
 def checar_anuncios(historico):
-    headers = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
-        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
-        "Accept-Language": "pt-BR,pt;q=0.9,en-US;q=0.8",
-        "Sec-Fetch-Dest": "document",
-        "Sec-Fetch-Mode": "navigate",
-        "Sec-Fetch-Site": "none",
-        "Sec-Fetch-User": "?1",
-        "Upgrade-Insecure-Requests": "1"
-    }
-
     try:
-        # Usando curl_cffi para imitar o handshake TLS exato do Chrome
-        session = cffi_requests.Session(impersonate="chrome124")
-        resposta = session.get(URL_BUSCA, headers=headers, timeout=25)
-
-        if resposta.status_code != 200:
-            print(f"[Aviso] Status {resposta.status_code} ao acessar OLX.")
-            return
-
-        anuncios = extrair_anuncios(resposta.text)
+        html = obter_html_com_playwright(URL_BUSCA)
+        anuncios = extrair_anuncios(html)
 
         if not anuncios:
             print("[Aviso] Nenhum anúncio identificado na página.")
