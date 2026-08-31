@@ -12,6 +12,9 @@ CHAT_ID = os.getenv("CHAT_ID", "")
 URL_BUSCA = "https://www.olx.com.br/games/consoles-de-video-game/sony/playstation-5?ps=2000&pe=3000&opst=2"
 PRECO_LIMITE = 3001.00
 DB_FILE = "anuncios_vistos.json"
+
+# Termos que você NÃO quer que apareçam no título
+PALAVRAS_BLOQUEADAS = ["vr", "portal", "psvr", "playstation portal"]
 # =================================================
 
 def carregar_historico():
@@ -66,6 +69,16 @@ def extrair_preco(texto):
         return float(apenas_numeros)
     except ValueError:
         return None
+
+def contem_palavra_bloqueada(titulo):
+    """Verifica se o título contém qualquer termo da lista de bloqueio."""
+    titulo_lower = titulo.lower()
+    for termo in PALAVRAS_BLOQUEADAS:
+        # Usa \b para casar palavras exatas
+        padrao = rf"\b{re.escape(termo.lower())}\b"
+        if re.search(padrao, titulo_lower):
+            return True
+    return False
 
 def extrair_anuncios(html_text):
     soup = BeautifulSoup(html_text, "html.parser")
@@ -140,7 +153,6 @@ def obter_html_com_playwright(url):
         )
         page = context.new_page()
         
-        # Oculta propriedades de automação
         page.add_init_script("""
             Object.defineProperty(navigator, 'webdriver', {
                 get: () => undefined
@@ -148,7 +160,7 @@ def obter_html_com_playwright(url):
         """)
 
         page.goto(url, wait_until="domcontentloaded", timeout=45000)
-        page.wait_for_timeout(3000)  # aguarda scripts anti-bot resolverem
+        page.wait_for_timeout(3000)
         content = page.content()
         browser.close()
         return content
@@ -174,6 +186,11 @@ def checar_anuncios(historico):
             titulo = item["titulo"]
             preco = item["preco"]
             link = item["link"]
+
+            # Filtro de palavras bloqueadas
+            if contem_palavra_bloqueada(titulo):
+                print(f" [Ignorado - Filtro de Palavra] {titulo[:40]}")
+                continue
 
             print(f" -> Encontrado: {titulo[:35]} | Preço: {preco}")
 
