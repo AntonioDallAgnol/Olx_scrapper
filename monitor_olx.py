@@ -14,7 +14,7 @@ PRECO_LIMITE = 3001.00
 DB_FILE = "anuncios_vistos.json"
 
 # Termos que você NÃO quer que apareçam no título
-PALAVRAS_BLOQUEADAS = ["vr", "portal", "psvr", "playstation portal", "vr2", "psvr2"]
+PALAVRAS_BLOQUEADAS = ["vr", "portal", "psvr", "playstation portal", "vr2", "psvr2", "metaquest", "ps4", "yotei"]
 # =================================================
 
 def carregar_historico():
